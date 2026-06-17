@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>버전별 티켓 진행 현황</title>
+<style>
+  :root{
+    --ink:#1a1f2b;
+    --paper:#fbfaf7;
+    --line-soft:#dfe1da;
+    --confirmed:#1f6f5c;
+    --confirmed-soft:#e6f2ee;
+    --pending:#b5562a;
+    --pending-soft:#fbece2;
+    --review:#5b5fae;
+    --review-soft:#ecedf8;
+    --mono: "Courier New", Courier, monospace;
+    --serif: "Cambria", "Times New Roman", serif;
+    --sans: "Calibri", Arial, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--paper);color:var(--ink);font-family:var(--sans);line-height:1.55;}
+  .wrap{max-width:980px;margin:0 auto;padding:48px 24px 90px;}
+
+  .eyebrow{font-family:var(--mono);font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;color:#6b7280;margin-bottom:10px;}
+  h1{font-family:var(--serif);font-size:32px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em;}
+  .subtitle{font-size:13.5px;color:#4b5263;max-width:640px;margin:0 0 24px;}
+
+  .config-banner{
+    border:1px solid var(--pending);
+    background:var(--pending-soft);
+    color:#7a3a1a;
+    border-radius:4px;
+    padding:14px 16px;
+    font-size:13px;
+    margin-bottom:24px;
+  }
+  .config-banner code{font-family:var(--mono);background:#fff;padding:1px 5px;border-radius:3px;}
+
+  .toolbar{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;align-items:center;}
+  .btn{font-family:var(--mono);font-size:11.5px;border-radius:3px;padding:7px 12px;cursor:pointer;border:1px solid var(--line-soft);background:#fff;color:var(--ink);}
+  .btn:hover{border-color:var(--ink);}
+  .btn.active{border-color:var(--ink);font-weight:600;background:#f4f2ec;}
+  .sync-status{font-family:var(--mono);font-size:11.5px;color:#9aa0ab;margin-left:auto;}
+
+  .filter-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;}
+  .filter-group{display:flex;gap:6px;align-items:center;font-size:12px;color:#6b7280;flex-wrap:wrap;}
+  .filter-group select{font-family:var(--sans);font-size:12.5px;padding:5px 8px;border:1px solid var(--line-soft);border-radius:3px;background:#fff;}
+
+  .version-bar{display:flex;gap:6px;flex-wrap:wrap;border-bottom:2px solid var(--ink);margin-bottom:20px;}
+  .version-tab{font-family:var(--mono);font-size:13px;background:none;border:none;cursor:pointer;padding:10px 14px 12px;color:#8a8f9b;position:relative;top:2px;}
+  .version-tab.active{color:var(--ink);border-bottom:2px solid var(--ink);font-weight:600;}
+  .version-tab:hover:not(.active){color:var(--ink);}
+
+  .stat-row{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;}
+  .stat-card{flex:1;min-width:100px;border:1px solid var(--line-soft);border-radius:4px;padding:12px 14px;background:#fff;}
+  .stat-num{font-family:var(--serif);font-size:22px;font-weight:700;line-height:1;}
+  .stat-label{font-size:11px;color:#6b7280;margin-top:4px;text-transform:uppercase;letter-spacing:.05em;}
+
+  .list-head{display:flex;align-items:baseline;gap:12px;margin:6px 0 14px;}
+  .list-head h2{font-family:var(--serif);font-size:18px;margin:0;white-space:nowrap;}
+  .list-head .rule{flex:1;height:1px;background:var(--line-soft);}
+  .list-head .count{font-family:var(--mono);font-size:12px;color:#6b7280;}
+
+  .empty-state{border:1px dashed var(--line-soft);border-radius:6px;padding:32px 20px;text-align:center;color:#8a8f9b;font-size:13.5px;}
+
+  .ticket{border:1px solid var(--line-soft);border-radius:4px;background:#fff;padding:16px 18px;margin-bottom:10px;}
+  .ticket-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;cursor:pointer;}
+  .ticket-titlewrap{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;min-width:0;}
+  .ticket-num{font-family:var(--mono);font-size:11.5px;color:#fff;background:#6b7280;padding:2px 8px;border-radius:3px;flex-shrink:0;}
+  .ticket-title{font-family:var(--serif);font-size:15.5px;font-weight:700;margin:0;}
+  .meta-pills{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px;}
+  .pill{font-family:var(--mono);font-size:10.5px;padding:2px 8px;border-radius:99px;background:#f1efe8;color:#6b7280;white-space:nowrap;}
+  .pill.owner{background:var(--review-soft);color:var(--review);}
+  .pill.version{background:var(--confirmed-soft);color:var(--confirmed);}
+
+  .ticket-desc{font-size:13px;color:#4b5263;margin:9px 0 0;white-space:pre-wrap;}
+
+  .progress-line{font-size:12px;color:#9aa0ab;margin-top:8px;font-family:var(--mono);}
+
+  .ticket-details{margin-top:12px;padding-top:12px;border-top:1px solid var(--line-soft);}
+  .todo-list{margin-top:4px;}
+  .todo-item{display:flex;align-items:flex-start;gap:9px;padding:6px 0;font-size:13.5px;}
+  .todo-item input[type=checkbox]{margin-top:3px;width:15px;height:15px;flex-shrink:0;cursor:pointer;accent-color:var(--confirmed);}
+  .todo-item.done .todo-text{color:#9aa0ab;text-decoration:line-through;}
+  .todo-owner{font-family:var(--mono);font-size:11px;color:#9aa0ab;margin-left:auto;flex-shrink:0;padding-top:1px;}
+  .todo-remove{background:none;border:none;color:#c8a8a0;cursor:pointer;font-size:13px;padding:0 0 0 4px;flex-shrink:0;}
+  .todo-remove:hover{color:var(--pending);}
+
+  .add-todo-row{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;}
+  .add-todo-row input{flex:1;min-width:120px;font-size:13px;padding:6px 8px;border:1px solid var(--line-soft);border-radius:3px;font-family:var(--sans);}
+  .add-todo-row input.owner-input{flex:0 0 100px;}
+  .add-todo-row button{font-family:var(--mono);font-size:11.5px;padding:6px 10px;border-radius:3px;border:1px solid var(--line-soft);background:#f6f5f0;cursor:pointer;}
+  .add-todo-row button:hover{border-color:var(--ink);}
+
+  .toggle-btn{margin-top:10px;font-family:var(--mono);font-size:11.5px;color:#6b7280;background:none;border:none;cursor:pointer;padding:0;text-decoration:underline;text-decoration-color:#cfd2cc;}
+  .toggle-btn:hover{color:var(--ink);}
+
+  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;font-size:13px;padding:10px 18px;border-radius:4px;z-index:100;font-family:var(--sans);box-shadow:0 4px 14px rgba(0,0,0,.2);}
+
+  footer{margin-top:40px;padding-top:18px;border-top:1px solid var(--line-soft);font-size:11.5px;color:#9aa0ab;font-family:var(--mono);}
+
+  @media (max-width:600px){
+    .wrap{padding:30px 14px 70px;}
+    h1{font-size:24px;}
+    .ticket-top{flex-direction:column;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <div class="eyebrow">RELEASE TICKET TRACKER · GOOGLE SHEETS 연동</div>
+  <h1>버전별 티켓 진행 현황</h1>
+  <p class="subtitle">티켓 정보는 Google Sheets에서 직접 관리되고, 체크리스트는 이 페이지에서 담당자가 추가/체크하면 시트에 바로 반영됩니다.</p>
+
+  <div id="config-warning"></div>
+  <div id="content"><div class="empty-state">불러오는 중...</div></div>
+  <footer>Build Ticket Tracker · Google Sheets + Apps Script 연동 · <span id="last-sync"></span></footer>
+</div>
+
+<script>
+/* ============== 설정 ============== */
+/* 아래 SCRIPT_URL을 Apps Script 배포 후 발급받은 웹 앱 URL로 교체하세요.
+   예: https://script.google.com/macros/s/AKfycb.../exec */
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwOgsnHxv7NWhNguzsAgO_o_ehqvR2A4QVdFTfkoyIAgTM05WknFjRSNb-Mrvzg8V4t/exec";
+
+/* 자동 새로고침 주기 (ms) */
+const REFRESH_INTERVAL = 15000;
+/* ==================================== */
+
+let state = { tickets: [], checklist: [] };
+let activeVersion = "__ALL__";
+let statusFilterMajor = "";
+let statusFilterMinor = "";
+let expandedTickets = new Set();
+let isConfigured = SCRIPT_URL.indexOf("PASTE_YOUR") === -1;
+let refreshTimer = null;
+
+function showToast(msg) {
+  const el = document.createElement("div");
+  el.className = "toast";
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 2200);
+}
+
+function esc(str) {
+  return String(str ?? "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+
+async function fetchData() {
+  const res = await fetch(SCRIPT_URL, { method: "GET" });
+  if (!res.ok) throw new Error("fetch failed: " + res.status);
+  return res.json();
+}
+
+async function postAction(payload) {
+  const res = await fetch(SCRIPT_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error("post failed: " + res.status);
+  return res.json();
+}
+
+async function loadAndRender(showLoading) {
+  if (!isConfigured) {
+    renderConfigWarning();
+    return;
+  }
+  if (showLoading && state.tickets.length === 0) {
+    document.getElementById("content").innerHTML = '<div class="empty-state">불러오는 중...</div>';
+  }
+  try {
+    const data = await fetchData();
+    state.tickets = data.tickets || [];
+    state.checklist = data.checklist || [];
+    document.getElementById("last-sync").textContent = "마지막 동기화: " + new Date().toLocaleTimeString("ko-KR");
+    render();
+  } catch (err) {
+    document.getElementById("content").innerHTML =
+      '<div class="empty-state">데이터를 불러오지 못했습니다. Apps Script 웹 앱 URL과 배포 권한(모든 사용자)을 확인해주세요.<br><span style="font-family:var(--mono);font-size:11px;">' + esc(err.message) + '</span></div>';
+  }
+}
+
+function renderConfigWarning() {
+  document.getElementById("config-warning").innerHTML =
+    '<div class="config-banner">SCRIPT_URL이 설정되지 않았습니다. 이 HTML 파일 안의 <code>SCRIPT_URL</code> 값을 Apps Script 배포 후 발급받은 웹 앱 URL로 교체해주세요.</div>';
+  document.getElementById("content").innerHTML = "";
+}
+
+function getVersions() {
+  const set = new Set();
+  state.tickets.forEach((t) => { if (t.target_version) set.add(t.target_version); });
+  return Array.from(set).sort();
+}
+
+function getCategoryMajors() {
+  const set = new Set();
+  state.tickets.forEach((t) => { if (t.category_major) set.add(t.category_major); });
+  return Array.from(set).sort();
+}
+
+function getCategoryMinors() {
+  const set = new Set();
+  state.tickets.forEach((t) => { if (t.category_minor) set.add(t.category_minor); });
+  return Array.from(set).sort();
+}
+
+function filteredTickets() {
+  return state.tickets.filter((t) => {
+    if (activeVersion !== "__ALL__") {
+      const v = t.target_version || "(미지정)";
+      if (v !== activeVersion) return false;
+    }
+    if (statusFilterMajor && (t.category_major || "") !== statusFilterMajor) return false;
+    if (statusFilterMinor && (t.category_minor || "") !== statusFilterMinor) return false;
+    return true;
+  });
+}
+
+function checklistFor(ticketNo) {
+  return state.checklist.filter((c) => String(c.ticket_no) === String(ticketNo));
+}
+
+function render() {
+  renderVersionBar();
+  renderFilters();
+  renderStats();
+  renderTicketList();
+}
+
+function renderVersionBar() {
+  const versions = getVersions();
+  const bar = document.createElement("div");
+  bar.className = "version-bar";
+
+  const allBtn = document.createElement("button");
+  allBtn.className = "version-tab" + (activeVersion === "__ALL__" ? " active" : "");
+  allBtn.textContent = "전체";
+  allBtn.onclick = () => { activeVersion = "__ALL__"; render(); };
+  bar.appendChild(allBtn);
+
+  versions.forEach((v) => {
+    const btn = document.createElement("button");
+    btn.className = "version-tab" + (activeVersion === v ? " active" : "");
+    btn.textContent = v;
+    btn.onclick = () => { activeVersion = v; render(); };
+    bar.appendChild(btn);
+  });
+
+  const unassigned = state.tickets.some((t) => !t.target_version);
+  if (unassigned) {
+    const btn = document.createElement("button");
+    btn.className = "version-tab" + (activeVersion === "(미지정)" ? " active" : "");
+    btn.textContent = "(미지정)";
+    btn.onclick = () => { activeVersion = "(미지정)"; render(); };
+    bar.appendChild(btn);
+  }
+
+  replaceSection("version-bar-section", bar);
+}
+
+function renderFilters() {
+  const majors = getCategoryMajors();
+  const minors = getCategoryMinors();
+
+  const row = document.createElement("div");
+  row.className = "filter-row";
+
+  const group = document.createElement("div");
+  group.className = "filter-group";
+
+  const majorSelect = document.createElement("select");
+  majorSelect.innerHTML = '<option value="">대분류 전체</option>' +
+    majors.map((m) => `<option value="${esc(m)}"${m === statusFilterMajor ? " selected" : ""}>${esc(m)}</option>`).join("");
+  majorSelect.onchange = (e) => { statusFilterMajor = e.target.value; render(); };
+
+  const minorSelect = document.createElement("select");
+  minorSelect.innerHTML = '<option value="">소분류 전체</option>' +
+    minors.map((m) => `<option value="${esc(m)}"${m === statusFilterMinor ? " selected" : ""}>${esc(m)}</option>`).join("");
+  minorSelect.onchange = (e) => { statusFilterMinor = e.target.value; render(); };
+
+  group.appendChild(majorSelect);
+  group.appendChild(minorSelect);
+  row.appendChild(group);
+
+  replaceSection("filter-row-section", row);
+}
+
+function renderStats() {
+  const tickets = filteredTickets();
+  let totalTodos = 0, doneTodos = 0;
+  tickets.forEach((t) => {
+    const items = checklistFor(t.ticket_no);
+    totalTodos += items.length;
+    doneTodos += items.filter((i) => i.done === true).length;
+  });
+
+  const row = document.createElement("div");
+  row.className = "stat-row";
+  row.innerHTML = `
+    <div class="stat-card"><div class="stat-num">${tickets.length}</div><div class="stat-label">티켓 수</div></div>
+    <div class="stat-card"><div class="stat-num">${totalTodos}</div><div class="stat-label">전체 체크항목</div></div>
+    <div class="stat-card"><div class="stat-num">${doneTodos}</div><div class="stat-label">완료된 항목</div></div>
+  `;
+  replaceSection("stat-row-section", row);
+}
+
+function renderTicketList() {
+  const tickets = filteredTickets();
+  const head = document.createElement("div");
+  head.className = "list-head";
+  head.innerHTML = `<h2>티켓 목록</h2><div class="rule"></div><div class="count">${tickets.length}건</div>`;
+  replaceSection("list-head-section", head);
+
+  const container = document.createElement("div");
+  if (tickets.length === 0) {
+    container.innerHTML = '<div class="empty-state">조건에 해당하는 티켓이 없습니다.</div>';
+  } else {
+    tickets.forEach((t) => container.appendChild(renderTicketCard(t)));
+  }
+  replaceSection("ticket-list-section", container);
+}
+
+function renderTicketCard(t) {
+  const ticketNo = t.ticket_no;
+  const items = checklistFor(ticketNo);
+  const doneCount = items.filter((i) => i.done === true).length;
+  const expanded = expandedTickets.has(String(ticketNo));
+
+  const card = document.createElement("div");
+  card.className = "ticket";
+
+  const top = document.createElement("div");
+  top.className = "ticket-top";
+  top.onclick = () => {
+    if (expanded) expandedTickets.delete(String(ticketNo));
+    else expandedTickets.add(String(ticketNo));
+    render();
+  };
+  top.innerHTML = `
+    <div class="ticket-titlewrap">
+      <span class="ticket-num">#${esc(ticketNo)}</span>
+      <h3 class="ticket-title">${esc(t.title || "(제목 없음)")}</h3>
+    </div>
+  `;
+  card.appendChild(top);
+
+  const pills = document.createElement("div");
+  pills.className = "meta-pills";
+  if (t.owner) pills.innerHTML += `<span class="pill owner">${esc(t.owner)}</span>`;
+  if (t.target_version) pills.innerHTML += `<span class="pill version">${esc(t.target_version)}</span>`;
+  if (t.category_major) pills.innerHTML += `<span class="pill">${esc(t.category_major)}</span>`;
+  if (t.category_minor) pills.innerHTML += `<span class="pill">${esc(t.category_minor)}</span>`;
+  card.appendChild(pills);
+
+  if (t.desc) {
+    const desc = document.createElement("p");
+    desc.className = "ticket-desc";
+    desc.textContent = t.desc;
+    card.appendChild(desc);
+  }
+
+  const progress = document.createElement("div");
+  progress.className = "progress-line";
+  progress.textContent = items.length > 0 ? `체크리스트 ${doneCount}/${items.length} 완료` : "등록된 체크리스트 없음";
+  card.appendChild(progress);
+
+  if (expanded) {
+    const details = document.createElement("div");
+    details.className = "ticket-details";
+
+    const todoList = document.createElement("div");
+    todoList.className = "todo-list";
+    if (items.length === 0) {
+      todoList.innerHTML = '<div style="font-size:12.5px;color:#9aa0ab;">등록된 체크리스트 항목이 없습니다.</div>';
+    }
+    items.forEach((item) => {
+      const row = document.createElement("div");
+      row.className = "todo-item" + (item.done ? " done" : "");
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = !!item.done;
+      cb.onchange = () => toggleDone(item.id);
+      row.appendChild(cb);
+      const span = document.createElement("span");
+      span.className = "todo-text";
+      span.textContent = item.content;
+      row.appendChild(span);
+      if (item.owner) {
+        const owner = document.createElement("span");
+        owner.className = "todo-owner";
+        owner.textContent = item.owner;
+        row.appendChild(owner);
+      }
+      const del = document.createElement("button");
+      del.className = "todo-remove";
+      del.textContent = "✕";
+      del.title = "삭제";
+      del.onclick = () => deleteItem(item.id);
+      row.appendChild(del);
+      todoList.appendChild(row);
+    });
+    details.appendChild(todoList);
+
+    const addRow = document.createElement("div");
+    addRow.className = "add-todo-row";
+    addRow.innerHTML = `
+      <input type="text" placeholder="처리할 항목 입력" id="new-content-${esc(ticketNo)}" />
+      <input class="owner-input" type="text" placeholder="담당자" id="new-owner-${esc(ticketNo)}" />
+      <button type="button">추가</button>
+    `;
+    addRow.querySelector("button").onclick = () => addItem(ticketNo);
+    details.appendChild(addRow);
+
+    const toggleBtn = document.createElement("button");
+    toggleBtn.className = "toggle-btn";
+    toggleBtn.textContent = "접기 ▴";
+    toggleBtn.onclick = () => { expandedTickets.delete(String(ticketNo)); render(); };
+    details.appendChild(toggleBtn);
+
+    card.appendChild(details);
+  } else {
+    const toggleBtn = document.createElement("button");
+    toggleBtn.className = "toggle-btn";
+    toggleBtn.textContent = "체크리스트 보기 ▾";
+    toggleBtn.onclick = () => { expandedTickets.add(String(ticketNo)); render(); };
+    card.appendChild(toggleBtn);
+  }
+
+  return card;
+}
+
+async function toggleDone(id) {
+  // optimistic update
+  const item = state.checklist.find((c) => String(c.id) === String(id));
+  if (item) item.done = !item.done;
+  render();
+  try {
+    await postAction({ action: "toggle_done", id });
+  } catch (err) {
+    showToast("저장 실패. 다시 시도해주세요.");
+    if (item) item.done = !item.done;
+    render();
+  }
+}
+
+async function addItem(ticketNo) {
+  const contentInput = document.getElementById("new-content-" + ticketNo);
+  const ownerInput = document.getElementById("new-owner-" + ticketNo);
+  const content = contentInput.value.trim();
+  const owner = ownerInput.value.trim();
+  if (!content) return;
+  try {
+    const result = await postAction({ action: "add_checklist_item", ticket_no: ticketNo, content, owner });
+    state.checklist.push({ id: result.id, ticket_no: ticketNo, content, owner, done: false });
+    expandedTickets.add(String(ticketNo));
+    render();
+    showToast("체크리스트 항목이 추가되었습니다.");
+  } catch (err) {
+    showToast("추가 실패. 다시 시도해주세요.");
+  }
+}
+
+async function deleteItem(id) {
+  if (!confirm("이 체크리스트 항목을 삭제할까요?")) return;
+  const idx = state.checklist.findIndex((c) => String(c.id) === String(id));
+  const removed = idx >= 0 ? state.checklist.splice(idx, 1)[0] : null;
+  render();
+  try {
+    await postAction({ action: "delete_checklist_item", id });
+    showToast("삭제되었습니다.");
+  } catch (err) {
+    showToast("삭제 실패. 다시 시도해주세요.");
+    if (removed) state.checklist.push(removed);
+    render();
+  }
+}
+
+function replaceSection(id, newEl) {
+  let section = document.getElementById(id);
+  if (!section) {
+    section = document.createElement("div");
+    section.id = id;
+    document.getElementById("content").appendChild(section);
+  }
+  section.innerHTML = "";
+  section.appendChild(newEl);
+}
+
+function ensureSections() {
+  const content = document.getElementById("content");
+  content.innerHTML = "";
+  ["version-bar-section", "filter-row-section", "stat-row-section", "list-head-section", "ticket-list-section"].forEach((id) => {
+    const div = document.createElement("div");
+    div.id = id;
+    content.appendChild(div);
+  });
+}
+
+(function init() {
+  if (!isConfigured) {
+    renderConfigWarning();
+    return;
+  }
+  ensureSections();
+  loadAndRender(true);
+  refreshTimer = setInterval(() => loadAndRender(false), REFRESH_INTERVAL);
+})();
+</script>
+</body>
+</html>
