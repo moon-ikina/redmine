@@ -70,6 +70,8 @@
   .ticket-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;cursor:pointer;}
   .ticket-titlewrap{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;min-width:0;}
   .ticket-num{font-family:var(--mono);font-size:11.5px;color:#fff;background:#6b7280;padding:2px 8px;border-radius:3px;flex-shrink:0;}
+  .ticket-num.linked{cursor:pointer;background:var(--review);text-decoration:none;}
+  .ticket-num.linked:hover{background:#474b8f;}
   .ticket-title{font-family:var(--serif);font-size:15.5px;font-weight:700;margin:0;}
   .meta-pills{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px;}
   .pill{font-family:var(--mono);font-size:10.5px;padding:2px 8px;border-radius:99px;background:#f1efe8;color:#6b7280;white-space:nowrap;}
@@ -83,8 +85,12 @@
   .ticket-details{margin-top:12px;padding-top:12px;border-top:1px solid var(--line-soft);}
   .todo-list{margin-top:4px;}
   .todo-item{display:flex;align-items:flex-start;gap:9px;padding:6px 0;font-size:13.5px;}
-  .todo-item input[type=checkbox]{margin-top:3px;width:15px;height:15px;flex-shrink:0;cursor:pointer;accent-color:var(--confirmed);}
-  .todo-item.done .todo-text{color:#9aa0ab;text-decoration:line-through;}
+  .todo-checks{display:flex;gap:10px;flex-shrink:0;margin-top:1px;}
+  .check-label{display:flex;align-items:center;gap:4px;font-family:var(--mono);font-size:10px;color:#9aa0ab;cursor:pointer;}
+  .check-label input[type=checkbox]{width:14px;height:14px;cursor:pointer;}
+  .check-label.impl input[type=checkbox]{accent-color:var(--review);}
+  .check-label.check input[type=checkbox]{accent-color:var(--confirmed);}
+  .todo-item.both-done .todo-text{color:#9aa0ab;text-decoration:line-through;}
   .todo-owner{font-family:var(--mono);font-size:11px;color:#9aa0ab;margin-left:auto;flex-shrink:0;padding-top:1px;}
   .todo-remove{background:none;border:none;color:#c8a8a0;cursor:pointer;font-size:13px;padding:0 0 0 4px;flex-shrink:0;}
   .todo-remove:hover{color:var(--pending);}
@@ -124,16 +130,20 @@
 /* ============== 설정 ============== */
 /* 아래 SCRIPT_URL을 Apps Script 배포 후 발급받은 웹 앱 URL로 교체하세요.
    예: https://script.google.com/macros/s/AKfycb.../exec */
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwOgsnHxv7NWhNguzsAgO_o_ehqvR2A4QVdFTfkoyIAgTM05WknFjRSNb-Mrvzg8V4t/exec";
+const SCRIPT_URL = "PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE";
 
 /* 자동 새로고침 주기 (ms) */
 const REFRESH_INTERVAL = 15000;
+
+/* 레드마인 베이스 URL — 끝에 슬래시 없이. 티켓 번호 클릭 시 {REDMINE_BASE_URL}/{티켓번호} 로 이동합니다. */
+const REDMINE_BASE_URL = "https://awsweb.k-copro.jp/issues";
 /* ==================================== */
 
 let state = { tickets: [], checklist: [] };
 let activeVersion = "__ALL__";
 let statusFilterMajor = "";
 let statusFilterMinor = "";
+let statusFilterOwner = "";
 let expandedTickets = new Set();
 let isConfigured = SCRIPT_URL.indexOf("PASTE_YOUR") === -1;
 let refreshTimer = null;
@@ -150,6 +160,17 @@ function esc(str) {
   return String(str ?? "").replace(/[&<>"']/g, (c) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
   }[c]));
+}
+
+function extractTicketNumber(raw) {
+  const match = String(raw ?? "").match(/\d+/);
+  return match ? match[0] : "";
+}
+
+function redmineUrlFor(ticketNo) {
+  const num = extractTicketNumber(ticketNo);
+  if (!num) return "";
+  return REDMINE_BASE_URL.replace(/\/+$/, "") + "/" + num;
 }
 
 async function fetchData() {
@@ -212,6 +233,12 @@ function getCategoryMinors() {
   return Array.from(set).sort();
 }
 
+function getOwners() {
+  const set = new Set();
+  state.tickets.forEach((t) => { if (t.owner) set.add(t.owner); });
+  return Array.from(set).sort();
+}
+
 function filteredTickets() {
   return state.tickets.filter((t) => {
     if (activeVersion !== "__ALL__") {
@@ -220,6 +247,7 @@ function filteredTickets() {
     }
     if (statusFilterMajor && (t.category_major || "") !== statusFilterMajor) return false;
     if (statusFilterMinor && (t.category_minor || "") !== statusFilterMinor) return false;
+    if (statusFilterOwner && (t.owner || "") !== statusFilterOwner) return false;
     return true;
   });
 }
@@ -269,12 +297,18 @@ function renderVersionBar() {
 function renderFilters() {
   const majors = getCategoryMajors();
   const minors = getCategoryMinors();
+  const owners = getOwners();
 
   const row = document.createElement("div");
   row.className = "filter-row";
 
   const group = document.createElement("div");
   group.className = "filter-group";
+
+  const ownerSelect = document.createElement("select");
+  ownerSelect.innerHTML = '<option value="">담당자 전체</option>' +
+    owners.map((o) => `<option value="${esc(o)}"${o === statusFilterOwner ? " selected" : ""}>${esc(o)}</option>`).join("");
+  ownerSelect.onchange = (e) => { statusFilterOwner = e.target.value; render(); };
 
   const majorSelect = document.createElement("select");
   majorSelect.innerHTML = '<option value="">대분류 전체</option>' +
@@ -286,6 +320,7 @@ function renderFilters() {
     minors.map((m) => `<option value="${esc(m)}"${m === statusFilterMinor ? " selected" : ""}>${esc(m)}</option>`).join("");
   minorSelect.onchange = (e) => { statusFilterMinor = e.target.value; render(); };
 
+  group.appendChild(ownerSelect);
   group.appendChild(majorSelect);
   group.appendChild(minorSelect);
   row.appendChild(group);
@@ -295,11 +330,12 @@ function renderFilters() {
 
 function renderStats() {
   const tickets = filteredTickets();
-  let totalTodos = 0, doneTodos = 0;
+  let totalTodos = 0, implDone = 0, checkDone = 0;
   tickets.forEach((t) => {
     const items = checklistFor(t.ticket_no);
     totalTodos += items.length;
-    doneTodos += items.filter((i) => i.done === true).length;
+    implDone += items.filter((i) => i.done_impl === true).length;
+    checkDone += items.filter((i) => i.done_check === true).length;
   });
 
   const row = document.createElement("div");
@@ -307,7 +343,8 @@ function renderStats() {
   row.innerHTML = `
     <div class="stat-card"><div class="stat-num">${tickets.length}</div><div class="stat-label">티켓 수</div></div>
     <div class="stat-card"><div class="stat-num">${totalTodos}</div><div class="stat-label">전체 체크항목</div></div>
-    <div class="stat-card"><div class="stat-num">${doneTodos}</div><div class="stat-label">완료된 항목</div></div>
+    <div class="stat-card"><div class="stat-num">${implDone}</div><div class="stat-label">구현 완료</div></div>
+    <div class="stat-card"><div class="stat-num">${checkDone}</div><div class="stat-label">확인 완료</div></div>
   `;
   replaceSection("stat-row-section", row);
 }
@@ -331,7 +368,8 @@ function renderTicketList() {
 function renderTicketCard(t) {
   const ticketNo = t.ticket_no;
   const items = checklistFor(ticketNo);
-  const doneCount = items.filter((i) => i.done === true).length;
+  const implDoneCount = items.filter((i) => i.done_impl === true).length;
+  const checkDoneCount = items.filter((i) => i.done_check === true).length;
   const expanded = expandedTickets.has(String(ticketNo));
 
   const card = document.createElement("div");
@@ -339,14 +377,19 @@ function renderTicketCard(t) {
 
   const top = document.createElement("div");
   top.className = "ticket-top";
-  top.onclick = () => {
+  top.onclick = (e) => {
+    if (e.target.closest(".ticket-num")) return; // let the link handle its own click
     if (expanded) expandedTickets.delete(String(ticketNo));
     else expandedTickets.add(String(ticketNo));
     render();
   };
+  const redmineUrl = redmineUrlFor(ticketNo);
+  const numBadge = redmineUrl
+    ? `<a class="ticket-num linked" href="${esc(redmineUrl)}" target="_blank" rel="noopener" title="레드마인에서 열기">${esc(extractTicketNumber(ticketNo))}</a>`
+    : `<span class="ticket-num">${esc(ticketNo)}</span>`;
   top.innerHTML = `
     <div class="ticket-titlewrap">
-      <span class="ticket-num">#${esc(ticketNo)}</span>
+      ${numBadge}
       <h3 class="ticket-title">${esc(t.title || "(제목 없음)")}</h3>
     </div>
   `;
@@ -369,7 +412,9 @@ function renderTicketCard(t) {
 
   const progress = document.createElement("div");
   progress.className = "progress-line";
-  progress.textContent = items.length > 0 ? `체크리스트 ${doneCount}/${items.length} 완료` : "등록된 체크리스트 없음";
+  progress.textContent = items.length > 0
+    ? `구현 ${implDoneCount}/${items.length} · 확인 ${checkDoneCount}/${items.length}`
+    : "등록된 체크리스트 없음";
   card.appendChild(progress);
 
   if (expanded) {
@@ -383,12 +428,33 @@ function renderTicketCard(t) {
     }
     items.forEach((item) => {
       const row = document.createElement("div");
-      row.className = "todo-item" + (item.done ? " done" : "");
-      const cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.checked = !!item.done;
-      cb.onchange = () => toggleDone(item.id);
-      row.appendChild(cb);
+      const bothDone = item.done_impl === true && item.done_check === true;
+      row.className = "todo-item" + (bothDone ? " both-done" : "");
+
+      const checks = document.createElement("div");
+      checks.className = "todo-checks";
+
+      const implLabel = document.createElement("label");
+      implLabel.className = "check-label impl";
+      const implCb = document.createElement("input");
+      implCb.type = "checkbox";
+      implCb.checked = !!item.done_impl;
+      implCb.onchange = () => toggleDone(item.id, "done_impl");
+      implLabel.appendChild(implCb);
+      implLabel.appendChild(document.createTextNode("구현"));
+      checks.appendChild(implLabel);
+
+      const checkLabel = document.createElement("label");
+      checkLabel.className = "check-label check";
+      const checkCb = document.createElement("input");
+      checkCb.type = "checkbox";
+      checkCb.checked = !!item.done_check;
+      checkCb.onchange = () => toggleDone(item.id, "done_check");
+      checkLabel.appendChild(checkCb);
+      checkLabel.appendChild(document.createTextNode("확인"));
+      checks.appendChild(checkLabel);
+
+      row.appendChild(checks);
       const span = document.createElement("span");
       span.className = "todo-text";
       span.textContent = item.content;
@@ -437,16 +503,16 @@ function renderTicketCard(t) {
   return card;
 }
 
-async function toggleDone(id) {
+async function toggleDone(id, field) {
   // optimistic update
   const item = state.checklist.find((c) => String(c.id) === String(id));
-  if (item) item.done = !item.done;
+  if (item) item[field] = !item[field];
   render();
   try {
-    await postAction({ action: "toggle_done", id });
+    await postAction({ action: "toggle_done", id, field });
   } catch (err) {
     showToast("저장 실패. 다시 시도해주세요.");
-    if (item) item.done = !item.done;
+    if (item) item[field] = !item[field];
     render();
   }
 }
@@ -459,7 +525,7 @@ async function addItem(ticketNo) {
   if (!content) return;
   try {
     const result = await postAction({ action: "add_checklist_item", ticket_no: ticketNo, content, owner });
-    state.checklist.push({ id: result.id, ticket_no: ticketNo, content, owner, done: false });
+    state.checklist.push({ id: result.id, ticket_no: ticketNo, content, owner, done_impl: false, done_check: false });
     expandedTickets.add(String(ticketNo));
     render();
     showToast("체크리스트 항목이 추가되었습니다.");
