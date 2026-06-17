@@ -139,7 +139,7 @@ const REFRESH_INTERVAL = 15000;
 const REDMINE_BASE_URL = "https://awsweb.k-copro.jp/issues";
 /* ==================================== */
 
-let state = { tickets: [], checklist: [] };
+let state = { tickets: [], checklist: [], owners: [] };
 let activeVersion = "__ALL__";
 let statusFilterMajor = "";
 let statusFilterMinor = "";
@@ -201,6 +201,7 @@ async function loadAndRender(showLoading) {
     const data = await fetchData();
     state.tickets = data.tickets || [];
     state.checklist = data.checklist || [];
+    state.owners = data.owners || [];
     document.getElementById("last-sync").textContent = "마지막 동기화: " + new Date().toLocaleTimeString("ko-KR");
     render();
   } catch (err) {
@@ -234,8 +235,15 @@ function getCategoryMinors() {
 }
 
 function getOwners() {
+  if (state.owners && state.owners.length > 0) {
+    const set = new Set();
+    state.owners.forEach((o) => { if (o.name) set.add(o.name); });
+    return Array.from(set).sort();
+  }
+  // owners 시트가 없으면 tickets/checklist에 등장한 이름들로 대체
   const set = new Set();
   state.tickets.forEach((t) => { if (t.owner) set.add(t.owner); });
+  state.checklist.forEach((c) => { if (c.owner) set.add(c.owner); });
   return Array.from(set).sort();
 }
 
@@ -247,7 +255,11 @@ function filteredTickets() {
     }
     if (statusFilterMajor && (t.category_major || "") !== statusFilterMajor) return false;
     if (statusFilterMinor && (t.category_minor || "") !== statusFilterMinor) return false;
-    if (statusFilterOwner && (t.owner || "") !== statusFilterOwner) return false;
+    if (statusFilterOwner) {
+      const ticketOwnerMatch = (t.owner || "") === statusFilterOwner;
+      const checklistOwnerMatch = checklistFor(t.ticket_no).some((c) => (c.owner || "") === statusFilterOwner);
+      if (!ticketOwnerMatch && !checklistOwnerMatch) return false;
+    }
     return true;
   });
 }
