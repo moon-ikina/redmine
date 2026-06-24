@@ -50,13 +50,6 @@
   .filter-group select{font-family:var(--sans);font-size:12.5px;padding:5px 8px;border:1px solid var(--line-soft);border-radius:3px;background:#fff;}
   .final-check-filter{display:flex;align-items:center;gap:6px;font-size:12.5px;color:#4b5263;cursor:pointer;margin-left:4px;}
   .final-check-filter input[type=checkbox]{width:14px;height:14px;cursor:pointer;accent-color:var(--confirmed);}
-  .final-check-btn-group{display:flex;margin-left:4px;border:1px solid var(--line-soft);border-radius:4px;overflow:hidden;}
-  .final-filter-btn{font-family:var(--mono);font-size:11.5px;padding:6px 11px;border:none;border-right:1px solid var(--line-soft);background:#fff;color:#6b7280;cursor:pointer;white-space:nowrap;transition:background .15s,color .15s;}
-  .final-filter-btn:last-child{border-right:none;}
-  .final-filter-btn:hover:not(.active){background:#f4f2ec;color:var(--ink);}
-  .final-filter-btn.active{background:#f4f2ec;color:var(--ink);font-weight:600;}
-  .final-filter-btn.confirmed.active{background:var(--confirmed-soft);color:var(--confirmed);}
-  .final-filter-btn.pending.active{background:var(--pending-soft);color:var(--pending);}
 
   .version-bar{display:flex;gap:6px;flex-wrap:wrap;border-bottom:2px solid var(--ink);margin-bottom:20px;}
   .version-tab{font-family:var(--mono);font-size:13px;background:none;border:none;cursor:pointer;padding:10px 14px 12px;color:#8a8f9b;position:relative;top:2px;}
@@ -120,6 +113,25 @@
 
   footer{margin-top:40px;padding-top:18px;border-top:1px solid var(--line-soft);font-size:11.5px;color:#9aa0ab;font-family:var(--mono);}
 
+  /* ── 버전 설명 패널 ── */
+  .version-info-panel{margin-bottom:20px;}
+
+  /* 전체 탭: 테이블 형태 */
+  .version-info-table{width:100%;border-collapse:collapse;font-size:13px;}
+  .version-info-table thead th{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;font-weight:600;padding:6px 12px;border-bottom:2px solid var(--ink);text-align:left;}
+  .version-info-table tbody tr:not(:last-child) td{border-bottom:1px solid var(--line-soft);}
+  .version-info-table td{padding:9px 12px;vertical-align:top;}
+  .vit-ver{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--ink);white-space:nowrap;}
+  .vit-date{font-family:var(--mono);font-size:11px;color:#9aa0ab;white-space:nowrap;}
+  .vit-desc{font-size:13px;color:#4b5263;white-space:pre-wrap;line-height:1.6;}
+
+  /* 특정 버전 탭: 인라인 배너 */
+  .version-info-banner{display:flex;gap:14px;align-items:flex-start;background:#fff;border:1px solid var(--line-soft);border-left:4px solid var(--confirmed);border-radius:4px;padding:12px 16px;}
+  .vib-version{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--confirmed);white-space:nowrap;padding-top:1px;}
+  .vib-body{flex:1;min-width:0;}
+  .vib-desc{font-size:13px;color:#4b5263;white-space:pre-wrap;line-height:1.6;margin:0;}
+  .vib-date{font-family:var(--mono);font-size:11px;color:#9aa0ab;margin-top:4px;}
+
   @media (max-width:600px){
     .wrap{padding:30px 14px 70px;}
     h1{font-size:24px;}
@@ -151,13 +163,12 @@ const REFRESH_INTERVAL = 15000;
 const REDMINE_BASE_URL = "https://awsweb.k-copro.jp/issues";
 /* ==================================== */
 
-let state = { tickets: [], checklist: [], owners: [] };
+let state = { tickets: [], checklist: [], owners: [], versions: [] };
 let activeVersion = "__ALL__";
 let statusFilterMajor = "";
 let statusFilterMinor = "";
 let statusFilterOwner = "";
 let finalCheckOnly = false;
-let notFinalCheckOnly = false;
 let expandedTickets = new Set();
 let isConfigured = SCRIPT_URL.indexOf("PASTE_YOUR") === -1;
 let refreshTimer = null;
@@ -216,6 +227,7 @@ async function loadAndRender(showLoading) {
     state.tickets = data.tickets || [];
     state.checklist = data.checklist || [];
     state.owners = data.owners || [];
+    state.versions = data.versions || [];
     document.getElementById("last-sync").textContent = "마지막 동기화: " + new Date().toLocaleTimeString("ko-KR");
     render();
   } catch (err) {
@@ -275,7 +287,6 @@ function filteredTickets() {
       if (!ticketOwnerMatch && !checklistOwnerMatch) return false;
     }
     if (finalCheckOnly && t.final_check !== true) return false;
-    if (notFinalCheckOnly && t.final_check === true) return false;
     return true;
   });
 }
@@ -286,6 +297,7 @@ function checklistFor(ticketNo) {
 
 function render() {
   renderVersionBar();
+  renderVersionInfo();
   renderFilters();
   renderStats();
   renderTicketList();
@@ -322,6 +334,58 @@ function renderVersionBar() {
   replaceSection("version-bar-section", bar);
 }
 
+function renderVersionInfo() {
+  const panel = document.createElement("div");
+  panel.className = "version-info-panel";
+
+  if (state.versions.length === 0) {
+    // versions 시트가 없거나 비어있으면 아무것도 표시 안 함
+    replaceSection("version-info-section", panel);
+    return;
+  }
+
+  if (activeVersion === "__ALL__") {
+    // 전체 탭: 모든 버전 설명 테이블
+    const table = document.createElement("table");
+    table.className = "version-info-table";
+    table.innerHTML = `<thead><tr>
+      <th>버전</th>
+      <th>릴리즈일</th>
+      <th>설명</th>
+    </tr></thead>`;
+    const tbody = document.createElement("tbody");
+    state.versions.forEach((v) => {
+      if (!v.version) return;
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><span class="vit-ver">${esc(v.version)}</span></td>
+        <td><span class="vit-date">${esc(v.released_at || "—")}</span></td>
+        <td><span class="vit-desc">${esc(v.desc || "")}</span></td>
+      `;
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    panel.appendChild(table);
+  } else {
+    // 특정 버전 탭: 해당 버전 설명 배너
+    const info = state.versions.find((v) => String(v.version) === String(activeVersion));
+    if (info && info.desc) {
+      const banner = document.createElement("div");
+      banner.className = "version-info-banner";
+      banner.innerHTML = `
+        <div class="vib-version">${esc(info.version)}</div>
+        <div class="vib-body">
+          <p class="vib-desc">${esc(info.desc)}</p>
+          ${info.released_at ? `<div class="vib-date">릴리즈일: ${esc(info.released_at)}</div>` : ""}
+        </div>
+      `;
+      panel.appendChild(banner);
+    }
+  }
+
+  replaceSection("version-info-section", panel);
+}
+
 function renderFilters() {
   const majors = getCategoryMajors();
   const minors = getCategoryMinors();
@@ -353,28 +417,15 @@ function renderFilters() {
   group.appendChild(minorSelect);
   row.appendChild(group);
 
-  const finalCheckGroup = document.createElement("div");
-  finalCheckGroup.className = "final-check-btn-group";
-
-  const btnAll = document.createElement("button");
-  btnAll.className = "final-filter-btn" + (!finalCheckOnly && !notFinalCheckOnly ? " active" : "");
-  btnAll.textContent = "전체";
-  btnAll.onclick = () => { finalCheckOnly = false; notFinalCheckOnly = false; render(); };
-
-  const btnConfirmed = document.createElement("button");
-  btnConfirmed.className = "final-filter-btn confirmed" + (finalCheckOnly ? " active" : "");
-  btnConfirmed.textContent = "✔ 최종확인 완료";
-  btnConfirmed.onclick = () => { finalCheckOnly = true; notFinalCheckOnly = false; render(); };
-
-  const btnPending = document.createElement("button");
-  btnPending.className = "final-filter-btn pending" + (notFinalCheckOnly ? " active" : "");
-  btnPending.textContent = "✘ 미완료만 보기";
-  btnPending.onclick = () => { notFinalCheckOnly = true; finalCheckOnly = false; render(); };
-
-  finalCheckGroup.appendChild(btnAll);
-  finalCheckGroup.appendChild(btnConfirmed);
-  finalCheckGroup.appendChild(btnPending);
-  row.appendChild(finalCheckGroup);
+  const finalCheckLabel = document.createElement("label");
+  finalCheckLabel.className = "final-check-filter";
+  const finalCheckCb = document.createElement("input");
+  finalCheckCb.type = "checkbox";
+  finalCheckCb.checked = finalCheckOnly;
+  finalCheckCb.onchange = (e) => { finalCheckOnly = e.target.checked; render(); };
+  finalCheckLabel.appendChild(finalCheckCb);
+  finalCheckLabel.appendChild(document.createTextNode("최종확인된 티켓만 보기"));
+  row.appendChild(finalCheckLabel);
 
   replaceSection("filter-row-section", row);
 }
@@ -640,7 +691,7 @@ function replaceSection(id, newEl) {
 function ensureSections() {
   const content = document.getElementById("content");
   content.innerHTML = "";
-  ["version-bar-section", "filter-row-section", "stat-row-section", "list-head-section", "ticket-list-section"].forEach((id) => {
+  ["version-bar-section", "version-info-section", "filter-row-section", "stat-row-section", "list-head-section", "ticket-list-section"].forEach((id) => {
     const div = document.createElement("div");
     div.id = id;
     content.appendChild(div);
