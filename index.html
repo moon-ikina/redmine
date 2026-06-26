@@ -51,6 +51,17 @@
   .final-check-filter{display:flex;align-items:center;gap:6px;font-size:12.5px;color:#4b5263;cursor:pointer;margin-left:4px;}
   .final-check-filter input[type=checkbox]{width:14px;height:14px;cursor:pointer;accent-color:var(--confirmed);}
 
+  .final-check-btn-group{display:flex;margin-left:4px;border:1px solid var(--line-soft);border-radius:4px;overflow:hidden;}
+  .final-filter-btn{font-family:var(--mono);font-size:11.5px;padding:6px 11px;border:none;border-right:1px solid var(--line-soft);background:#fff;color:#6b7280;cursor:pointer;white-space:nowrap;transition:background .15s,color .15s;}
+  .final-filter-btn:last-child{border-right:none;}
+  .final-filter-btn:hover:not(.active){background:#f4f2ec;color:var(--ink);}
+  .final-filter-btn.active{background:#f4f2ec;color:var(--ink);font-weight:600;}
+  .final-filter-btn.confirmed.active{background:var(--confirmed-soft);color:var(--confirmed);}
+  .final-filter-btn.pending.active{background:var(--pending-soft);color:var(--pending);}
+
+  .owner-select{font-family:var(--sans);font-size:13px;padding:5px 8px;border:1px solid var(--line-soft);border-radius:3px;background:#fff;min-width:80px;}
+  .todo-edit-owner-sel{font-family:var(--sans);font-size:13px;padding:5px 8px;border:1px solid var(--line-soft);border-radius:3px;background:#fff;flex:0 0 110px;}
+
   .version-bar{display:flex;gap:6px;flex-wrap:wrap;border-bottom:2px solid var(--ink);margin-bottom:20px;}
   .version-tab{font-family:var(--mono);font-size:13px;background:none;border:none;cursor:pointer;padding:10px 14px 12px;color:#8a8f9b;position:relative;top:2px;}
   .version-tab.active{color:var(--ink);border-bottom:2px solid var(--ink);font-weight:600;}
@@ -222,6 +233,7 @@ let statusFilterMajor = "";
 let statusFilterMinor = "";
 let statusFilterOwner = "";
 let finalCheckOnly = false;
+let notFinalCheckOnly = false;
 let expandedTickets = new Set();
 let editingItem = null; // { id, content, owner }
 let isConfigured = SCRIPT_URL.indexOf("PASTE_YOUR") === -1;
@@ -341,6 +353,7 @@ function filteredTickets() {
       if (!ticketOwnerMatch && !checklistOwnerMatch) return false;
     }
     if (finalCheckOnly && t.final_check !== true) return false;
+    if (notFinalCheckOnly && t.final_check === true) return false;
     return true;
   });
 }
@@ -464,15 +477,24 @@ function renderFilters() {
   group.appendChild(minorSelect);
   row.appendChild(group);
 
-  const finalCheckLabel = document.createElement("label");
-  finalCheckLabel.className = "final-check-filter";
-  const finalCheckCb = document.createElement("input");
-  finalCheckCb.type = "checkbox";
-  finalCheckCb.checked = finalCheckOnly;
-  finalCheckCb.onchange = (e) => { finalCheckOnly = e.target.checked; render(); };
-  finalCheckLabel.appendChild(finalCheckCb);
-  finalCheckLabel.appendChild(document.createTextNode("최종확인된 티켓만 보기"));
-  row.appendChild(finalCheckLabel);
+  const finalCheckGroup = document.createElement("div");
+  finalCheckGroup.className = "final-check-btn-group";
+  const btnAll = document.createElement("button");
+  btnAll.className = "final-filter-btn" + (!finalCheckOnly && !notFinalCheckOnly ? " active" : "");
+  btnAll.textContent = "전체";
+  btnAll.onclick = () => { finalCheckOnly = false; notFinalCheckOnly = false; render(); };
+  const btnConfirmed = document.createElement("button");
+  btnConfirmed.className = "final-filter-btn confirmed" + (finalCheckOnly ? " active" : "");
+  btnConfirmed.textContent = "✔ 최종확인 완료";
+  btnConfirmed.onclick = () => { finalCheckOnly = true; notFinalCheckOnly = false; render(); };
+  const btnPending = document.createElement("button");
+  btnPending.className = "final-filter-btn pending" + (notFinalCheckOnly ? " active" : "");
+  btnPending.textContent = "✘ 미완료만 보기";
+  btnPending.onclick = () => { notFinalCheckOnly = true; finalCheckOnly = false; render(); };
+  finalCheckGroup.appendChild(btnAll);
+  finalCheckGroup.appendChild(btnConfirmed);
+  finalCheckGroup.appendChild(btnPending);
+  row.appendChild(finalCheckGroup);
 
   replaceSection("filter-row-section", row);
 }
@@ -625,15 +647,18 @@ function renderTicketCard(t) {
         contentInput.value = editingItem.content;
         contentInput.oninput = (e) => { editingItem.content = e.target.value; };
         contentInput.onkeydown = (e) => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") cancelEdit(); };
-        const ownerInput = document.createElement("input");
-        ownerInput.type = "text";
-        ownerInput.className = "todo-edit-owner";
-        ownerInput.placeholder = "담당자";
-        ownerInput.value = editingItem.owner;
-        ownerInput.oninput = (e) => { editingItem.owner = e.target.value; };
-        ownerInput.onkeydown = (e) => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") cancelEdit(); };
+        const ownerSel = document.createElement("select");
+        ownerSel.className = "todo-edit-owner-sel";
+        [{ value: "", label: "담당자" }, ...getOwners().map((o) => ({ value: o, label: o }))].forEach(({ value, label }) => {
+          const opt = document.createElement("option");
+          opt.value = value;
+          opt.textContent = label;
+          if (value === editingItem.owner) opt.selected = true;
+          ownerSel.appendChild(opt);
+        });
+        ownerSel.onchange = (e) => { editingItem.owner = e.target.value; };
         fields.appendChild(contentInput);
-        fields.appendChild(ownerInput);
+        fields.appendChild(ownerSel);
         row.appendChild(fields);
 
         const actions = document.createElement("div");
@@ -711,9 +736,12 @@ function renderTicketCard(t) {
 
     const addRow = document.createElement("div");
     addRow.className = "add-todo-row";
+    const ownerOptions = ['<option value="">담당자</option>',
+      ...getOwners().map((o) => `<option value="${esc(o)}">${esc(o)}</option>`)
+    ].join("");
     addRow.innerHTML = `
       <input type="text" placeholder="처리할 항목 입력" id="new-content-${esc(ticketNo)}" />
-      <input class="owner-input" type="text" placeholder="담당자" id="new-owner-${esc(ticketNo)}" />
+      <select class="owner-select" id="new-owner-${esc(ticketNo)}">${ownerOptions}</select>
       <button type="button">추가</button>
     `;
     addRow.querySelector("button").onclick = () => addItem(ticketNo);
