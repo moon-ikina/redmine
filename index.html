@@ -99,6 +99,19 @@
   .todo-owner{font-family:var(--mono);font-size:11px;color:#9aa0ab;margin-left:auto;flex-shrink:0;padding-top:1px;}
   .todo-remove{background:none;border:none;color:#c8a8a0;cursor:pointer;font-size:13px;padding:0 0 0 4px;flex-shrink:0;}
   .todo-remove:hover{color:var(--pending);}
+  .todo-edit{background:none;border:none;color:#b0b5c0;cursor:pointer;font-size:12px;padding:0 0 0 4px;flex-shrink:0;}
+  .todo-edit:hover{color:var(--review);}
+
+  .todo-item.editing{background:#f8f7f3;border-radius:4px;padding:8px 8px;margin:2px 0;flex-wrap:wrap;gap:6px;}
+  .todo-edit-fields{display:flex;gap:6px;flex:1;min-width:0;flex-wrap:wrap;}
+  .todo-edit-content{flex:1;min-width:120px;font-size:13px;padding:5px 8px;border:1px solid var(--line-soft);border-radius:3px;font-family:var(--sans);}
+  .todo-edit-owner{flex:0 0 90px;font-size:13px;padding:5px 8px;border:1px solid var(--line-soft);border-radius:3px;font-family:var(--sans);}
+  .todo-edit-content:focus,.todo-edit-owner:focus{border-color:#9aa0ab;outline:none;}
+  .todo-edit-actions{display:flex;gap:5px;flex-shrink:0;}
+  .todo-edit-save{font-family:var(--mono);font-size:11px;padding:5px 10px;border:1px solid var(--confirmed);border-radius:3px;background:var(--confirmed);color:#fff;cursor:pointer;}
+  .todo-edit-save:hover{background:#18574a;}
+  .todo-edit-cancel{font-family:var(--mono);font-size:11px;padding:5px 10px;border:1px solid var(--line-soft);border-radius:3px;background:#fff;color:#6b7280;cursor:pointer;}
+  .todo-edit-cancel:hover{border-color:var(--ink);color:var(--ink);}
 
   .add-todo-row{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;}
   .add-todo-row input{flex:1;min-width:120px;font-size:13px;padding:6px 8px;border:1px solid var(--line-soft);border-radius:3px;font-family:var(--sans);}
@@ -210,6 +223,7 @@ let statusFilterMinor = "";
 let statusFilterOwner = "";
 let finalCheckOnly = false;
 let expandedTickets = new Set();
+let editingItem = null; // { id, content, owner }
 let isConfigured = SCRIPT_URL.indexOf("PASTE_YOUR") === -1;
 let refreshTimer = null;
 
@@ -576,6 +590,73 @@ function renderTicketCard(t) {
     items.forEach((item) => {
       const row = document.createElement("div");
       const bothDone = item.done_impl === true && item.done_check === true;
+
+      // ── 수정 모드 ──
+      if (editingItem && String(editingItem.id) === String(item.id)) {
+        row.className = "todo-item editing";
+
+        const checks = document.createElement("div");
+        checks.className = "todo-checks";
+        const implLabel = document.createElement("label");
+        implLabel.className = "check-label impl";
+        const implCb = document.createElement("input");
+        implCb.type = "checkbox";
+        implCb.checked = !!item.done_impl;
+        implCb.onchange = () => toggleDone(item.id, "done_impl");
+        implLabel.appendChild(implCb);
+        implLabel.appendChild(document.createTextNode("구현"));
+        checks.appendChild(implLabel);
+        const checkLabel = document.createElement("label");
+        checkLabel.className = "check-label check";
+        const checkCb = document.createElement("input");
+        checkCb.type = "checkbox";
+        checkCb.checked = !!item.done_check;
+        checkCb.onchange = () => toggleDone(item.id, "done_check");
+        checkLabel.appendChild(checkCb);
+        checkLabel.appendChild(document.createTextNode("확인"));
+        checks.appendChild(checkLabel);
+        row.appendChild(checks);
+
+        const fields = document.createElement("div");
+        fields.className = "todo-edit-fields";
+        const contentInput = document.createElement("input");
+        contentInput.type = "text";
+        contentInput.className = "todo-edit-content";
+        contentInput.value = editingItem.content;
+        contentInput.oninput = (e) => { editingItem.content = e.target.value; };
+        contentInput.onkeydown = (e) => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") cancelEdit(); };
+        const ownerInput = document.createElement("input");
+        ownerInput.type = "text";
+        ownerInput.className = "todo-edit-owner";
+        ownerInput.placeholder = "담당자";
+        ownerInput.value = editingItem.owner;
+        ownerInput.oninput = (e) => { editingItem.owner = e.target.value; };
+        ownerInput.onkeydown = (e) => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") cancelEdit(); };
+        fields.appendChild(contentInput);
+        fields.appendChild(ownerInput);
+        row.appendChild(fields);
+
+        const actions = document.createElement("div");
+        actions.className = "todo-edit-actions";
+        const saveBtn = document.createElement("button");
+        saveBtn.className = "todo-edit-save";
+        saveBtn.textContent = "저장";
+        saveBtn.onclick = saveEdit;
+        const cancelBtn = document.createElement("button");
+        cancelBtn.className = "todo-edit-cancel";
+        cancelBtn.textContent = "취소";
+        cancelBtn.onclick = cancelEdit;
+        actions.appendChild(saveBtn);
+        actions.appendChild(cancelBtn);
+        row.appendChild(actions);
+
+        todoList.appendChild(row);
+        // 렌더 직후 포커스
+        setTimeout(() => contentInput.focus(), 30);
+        return;
+      }
+
+      // ── 일반 모드 ──
       row.className = "todo-item" + (bothDone ? " both-done" : "");
 
       const checks = document.createElement("div");
@@ -612,6 +693,12 @@ function renderTicketCard(t) {
         owner.textContent = item.owner;
         row.appendChild(owner);
       }
+      const editBtn = document.createElement("button");
+      editBtn.className = "todo-edit";
+      editBtn.textContent = "✎";
+      editBtn.title = "수정";
+      editBtn.onclick = () => startEdit(item);
+      row.appendChild(editBtn);
       const del = document.createElement("button");
       del.className = "todo-remove";
       del.textContent = "✕";
@@ -706,6 +793,43 @@ async function deleteItem(id) {
   } catch (err) {
     showToast("삭제 실패. 다시 시도해주세요.");
     if (removed) state.checklist.push(removed);
+    render();
+  }
+}
+
+function startEdit(item) {
+  editingItem = { id: item.id, content: item.content, owner: item.owner || "" };
+  render();
+}
+
+function cancelEdit() {
+  editingItem = null;
+  render();
+}
+
+async function saveEdit() {
+  if (!editingItem) return;
+  const content = editingItem.content.trim();
+  if (!content) {
+    showToast("내용을 입력해주세요.");
+    return;
+  }
+  const id = editingItem.id;
+  const owner = editingItem.owner.trim();
+
+  // optimistic update
+  const item = state.checklist.find((c) => String(c.id) === String(id));
+  const prev = item ? { content: item.content, owner: item.owner } : null;
+  if (item) { item.content = content; item.owner = owner; }
+  editingItem = null;
+  render();
+
+  try {
+    await postAction({ action: "edit_checklist_item", id, content, owner });
+    showToast("수정되었습니다.");
+  } catch (err) {
+    showToast("저장 실패. 다시 시도해주세요.");
+    if (item && prev) { item.content = prev.content; item.owner = prev.owner; }
     render();
   }
 }
