@@ -113,6 +113,21 @@
 
   footer{margin-top:40px;padding-top:18px;border-top:1px solid var(--line-soft);font-size:11.5px;color:#9aa0ab;font-family:var(--mono);}
 
+  /* ── 버전 설명 패널 ── */
+  .version-info-panel{margin-bottom:20px;}
+  .version-info-table{width:100%;border-collapse:collapse;font-size:13px;}
+  .version-info-table thead th{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;font-weight:600;padding:6px 12px;border-bottom:2px solid var(--ink);text-align:left;}
+  .version-info-table tbody tr:not(:last-child) td{border-bottom:1px solid var(--line-soft);}
+  .version-info-table td{padding:9px 12px;vertical-align:top;}
+  .vit-ver{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--ink);white-space:nowrap;}
+  .vit-date{font-family:var(--mono);font-size:11px;color:#9aa0ab;white-space:nowrap;}
+  .vit-desc{font-size:13px;color:#4b5263;white-space:pre-wrap;line-height:1.6;}
+  .version-info-banner{display:flex;gap:14px;align-items:flex-start;background:#fff;border:1px solid var(--line-soft);border-left:4px solid var(--confirmed);border-radius:4px;padding:12px 16px;}
+  .vib-version{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--confirmed);white-space:nowrap;padding-top:1px;}
+  .vib-body{flex:1;min-width:0;}
+  .vib-desc{font-size:13px;color:#4b5263;white-space:pre-wrap;line-height:1.6;margin:0;}
+  .vib-date{font-family:var(--mono);font-size:11px;color:#9aa0ab;margin-top:4px;}
+
   /* ── 마음의 편지 ── */
   .mail-btn{position:fixed;top:18px;right:22px;width:40px;height:40px;border-radius:50%;background:var(--ink);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.18);z-index:200;transition:background .15s,transform .15s;}
   .mail-btn:hover{background:#2e3547;transform:scale(1.08);}
@@ -150,7 +165,7 @@
   <p class="subtitle">티켓 정보는 Google Sheets에서 직접 관리되고, 체크리스트는 이 페이지에서 담당자가 추가/체크하면 시트에 바로 반영됩니다.</p>
 
   <div id="config-warning"></div>
-  <div id="content"><div class="empty-state">불러오는 중...</div></div>
+  <div id="content"><div class="empty-state"><img src="https://raw.githubusercontent.com/moon-ikina/redmine/main/cat_main.gif" style="width:120px;opacity:.75;" alt="불러오는 중"></div></div>
   <footer>Build Ticket Tracker · Google Sheets + Apps Script 연동 · <span id="last-sync"></span></footer>
 </div>
 
@@ -188,7 +203,7 @@ const REFRESH_INTERVAL = 15000;
 const REDMINE_BASE_URL = "https://awsweb.k-copro.jp/issues";
 /* ==================================== */
 
-let state = { tickets: [], checklist: [], owners: [] };
+let state = { tickets: [], checklist: [], owners: [], versions: [] };
 let activeVersion = "__ALL__";
 let statusFilterMajor = "";
 let statusFilterMinor = "";
@@ -245,13 +260,14 @@ async function loadAndRender(showLoading) {
     return;
   }
   if (showLoading && state.tickets.length === 0) {
-    document.getElementById("content").innerHTML = '<div class="empty-state">불러오는 중...</div>';
+    document.getElementById("content").innerHTML = '<div class="empty-state"><img src="https://raw.githubusercontent.com/moon-ikina/redmine/main/cat_main.gif" style="width:120px;opacity:.75;" alt="불러오는 중"></div>';
   }
   try {
     const data = await fetchData();
     state.tickets = data.tickets || [];
     state.checklist = data.checklist || [];
     state.owners = data.owners || [];
+    state.versions = data.versions || [];
     document.getElementById("last-sync").textContent = "마지막 동기화: " + new Date().toLocaleTimeString("ko-KR");
     render();
   } catch (err) {
@@ -321,9 +337,55 @@ function checklistFor(ticketNo) {
 
 function render() {
   renderVersionBar();
+  renderVersionInfo();
   renderFilters();
   renderStats();
   renderTicketList();
+}
+
+function renderVersionInfo() {
+  const panel = document.createElement("div");
+  panel.className = "version-info-panel";
+
+  if (state.versions.length === 0) {
+    replaceSection("version-info-section", panel);
+    return;
+  }
+
+  if (activeVersion === "__ALL__") {
+    const table = document.createElement("table");
+    table.className = "version-info-table";
+    table.innerHTML = `<thead><tr><th>버전</th><th>릴리즈일</th><th>설명</th></tr></thead>`;
+    const tbody = document.createElement("tbody");
+    state.versions.forEach((v) => {
+      if (!v.version) return;
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><span class="vit-ver">${esc(v.version)}</span></td>
+        <td><span class="vit-date">${esc(v.released_at || "—")}</span></td>
+        <td><span class="vit-desc">${esc(v.desc || "")}</span></td>
+      `;
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    panel.appendChild(table);
+  } else {
+    const info = state.versions.find((v) => String(v.version) === String(activeVersion));
+    if (info && info.desc) {
+      const banner = document.createElement("div");
+      banner.className = "version-info-banner";
+      banner.innerHTML = `
+        <div class="vib-version">${esc(info.version)}</div>
+        <div class="vib-body">
+          <p class="vib-desc">${esc(info.desc)}</p>
+          ${info.released_at ? `<div class="vib-date">릴리즈일: ${esc(info.released_at)}</div>` : ""}
+        </div>
+      `;
+      panel.appendChild(banner);
+    }
+  }
+
+  replaceSection("version-info-section", panel);
 }
 
 function renderVersionBar() {
@@ -662,7 +724,7 @@ function replaceSection(id, newEl) {
 function ensureSections() {
   const content = document.getElementById("content");
   content.innerHTML = "";
-  ["version-bar-section", "filter-row-section", "stat-row-section", "list-head-section", "ticket-list-section"].forEach((id) => {
+  ["version-bar-section", "version-info-section", "filter-row-section", "stat-row-section", "list-head-section", "ticket-list-section"].forEach((id) => {
     const div = document.createElement("div");
     div.id = id;
     content.appendChild(div);
