@@ -113,10 +113,33 @@
 
   footer{margin-top:40px;padding-top:18px;border-top:1px solid var(--line-soft);font-size:11.5px;color:#9aa0ab;font-family:var(--mono);}
 
+  /* ── 마음의 편지 ── */
+  .mail-btn{position:fixed;top:18px;right:22px;width:40px;height:40px;border-radius:50%;background:var(--ink);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.18);z-index:200;transition:background .15s,transform .15s;}
+  .mail-btn:hover{background:#2e3547;transform:scale(1.08);}
+  .mail-btn svg{width:20px;height:20px;fill:none;stroke:#fff;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:300;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .18s;}
+  .modal-overlay.open{opacity:1;pointer-events:all;}
+  .modal{background:#fff;border-radius:6px;padding:28px 26px 22px;width:100%;max-width:420px;box-shadow:0 8px 32px rgba(0,0,0,.18);transform:translateY(10px);transition:transform .18s;}
+  .modal-overlay.open .modal{transform:translateY(0);}
+  .modal-title{font-family:var(--serif);font-size:17px;font-weight:700;margin:0 0 16px;display:flex;align-items:center;gap:8px;}
+  .modal-title svg{width:18px;height:18px;fill:none;stroke:var(--ink);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0;}
+  .modal textarea{width:100%;min-height:120px;font-family:var(--sans);font-size:13.5px;padding:10px 12px;border:1px solid var(--line-soft);border-radius:4px;resize:vertical;line-height:1.6;color:var(--ink);outline:none;transition:border-color .15s;}
+  .modal textarea:focus{border-color:#9aa0ab;}
+  .modal-hint{font-size:11.5px;color:#9aa0ab;margin-top:8px;font-family:var(--sans);}
+  .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;}
+  .modal-cancel{font-family:var(--mono);font-size:12px;padding:7px 14px;border:1px solid var(--line-soft);border-radius:3px;background:#fff;color:#6b7280;cursor:pointer;}
+  .modal-cancel:hover{border-color:var(--ink);color:var(--ink);}
+  .modal-submit{font-family:var(--mono);font-size:12px;padding:7px 16px;border:1px solid var(--ink);border-radius:3px;background:var(--ink);color:#fff;cursor:pointer;transition:background .15s;}
+  .modal-submit:hover{background:#2e3547;}
+  .modal-submit:disabled{background:#c0c4cc;border-color:#c0c4cc;cursor:not-allowed;}
+
   @media (max-width:600px){
     .wrap{padding:30px 14px 70px;}
     h1{font-size:24px;}
     .ticket-top{flex-direction:column;}
+    .modal{margin:0 14px;max-width:100%;}
+    .mail-btn{top:14px;right:14px;}
   }
 </style>
 </head>
@@ -127,8 +150,29 @@
   <p class="subtitle">티켓 정보는 Google Sheets에서 직접 관리되고, 체크리스트는 이 페이지에서 담당자가 추가/체크하면 시트에 바로 반영됩니다.</p>
 
   <div id="config-warning"></div>
-  <div id="content"><div class="empty-state"><img src="https://raw.githubusercontent.com/moon-ikina/redmine/main/cat_main.gif" style="width:120px;opacity:.75;" alt="불러오는 중"></div></div>
+  <div id="content"><div class="empty-state">불러오는 중...</div></div>
   <footer>Build Ticket Tracker · Google Sheets + Apps Script 연동 · <span id="last-sync"></span></footer>
+</div>
+
+<!-- 마음의 편지 버튼 -->
+<button class="mail-btn" id="mail-btn" title="마음의 편지">
+  <svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><polyline points="2,4 12,13 22,4"/></svg>
+</button>
+
+<!-- 마음의 편지 모달 -->
+<div class="modal-overlay" id="mail-overlay">
+  <div class="modal">
+    <div class="modal-title">
+      <svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><polyline points="2,4 12,13 22,4"/></svg>
+      마음의 편지
+    </div>
+    <textarea id="mail-text" placeholder="내용을 입력해주세요"></textarea>
+    <div class="modal-hint">해당 페이지의 개선 요청사항을 입력해주세요 :)</div>
+    <div class="modal-actions">
+      <button class="modal-cancel" id="mail-cancel">취소</button>
+      <button class="modal-submit" id="mail-submit">확인</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -201,7 +245,7 @@ async function loadAndRender(showLoading) {
     return;
   }
   if (showLoading && state.tickets.length === 0) {
-    document.getElementById("content").innerHTML = '<div class="empty-state"><img src="https://raw.githubusercontent.com/moon-ikina/redmine/main/cat_main.gif" style="width:120px;opacity:.75;" alt="불러오는 중"></div>';
+    document.getElementById("content").innerHTML = '<div class="empty-state">불러오는 중...</div>';
   }
   try {
     const data = await fetchData();
@@ -624,6 +668,50 @@ function ensureSections() {
     content.appendChild(div);
   });
 }
+
+/* ── 마음의 편지 ── */
+(function initMail() {
+  const btn = document.getElementById("mail-btn");
+  const overlay = document.getElementById("mail-overlay");
+  const textarea = document.getElementById("mail-text");
+  const cancelBtn = document.getElementById("mail-cancel");
+  const submitBtn = document.getElementById("mail-submit");
+
+  function openModal() {
+    textarea.value = "";
+    overlay.classList.add("open");
+    setTimeout(() => textarea.focus(), 180);
+  }
+
+  function closeModal() {
+    overlay.classList.remove("open");
+  }
+
+  btn.addEventListener("click", openModal);
+  cancelBtn.addEventListener("click", closeModal);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
+
+  submitBtn.addEventListener("click", async () => {
+    const text = textarea.value.trim();
+    if (!text) {
+      textarea.focus();
+      return;
+    }
+    submitBtn.disabled = true;
+    submitBtn.textContent = "전송 중...";
+    try {
+      await postAction({ action: "add_feedback", content: text, submitted_at: new Date().toLocaleString("ko-KR") });
+      closeModal();
+      showToast("소중한 의견 감사합니다 :)");
+    } catch (err) {
+      showToast("전송 실패. 다시 시도해주세요.");
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "확인";
+    }
+  });
+})();
 
 (function init() {
   if (!isConfigured) {
